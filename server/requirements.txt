@@ -1,12 +1,42 @@
-# IndexTTS 运行依赖（Python 3.10–3.11）
-# torch / torchaudio 不在这里装 —— 它们要按显卡选对的 CUDA 版本，见 README：
-#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+# 本文件是「除 torch/torchaudio 之外的全部依赖」，版本取自一套已验证可跑的 3.11 环境。
 #
-# 然后：
-#   pip install -e <path>/index-tts --no-deps   # 它会把 torch 钉死，跳过依赖
-#   pip install -r requirements.txt
-
-soundfile>=0.12
-numpy
-wetext
-huggingface_hub
+# 为什么这样拆：
+#   torch / torchaudio 必须按显卡选 CUDA 版本（RTX 50 系要 cu128），不能写死在
+#   通用依赖里；index-tts 又把它们钉在 2.8.*，直接 pip install -e 会去下载错误的轮子。
+#   所以：先单独装 torch，再 --no-deps 装 index-tts，最后装这个文件。
+#
+# 已验证组合（见 README「已验证版本」）：
+#   Python 3.11.18 · torch 2.11.0+cu128 · IndexTTS-2.5 · RTX 5060 8 GB
+accelerate==1.8.1
+cn2an==0.5.22
+cython==3.0.7
+descript-audiotools==0.7.2
+einops==0.8.2
+ffmpeg-python==0.2.0
+fugashi==1.5.2
+g2p-en==2.1.0
+huggingface_hub==0.36.2
+jieba==0.42.1
+json5==0.10.0
+keras==2.9.0
+librosa==0.10.2.post1
+matplotlib==3.10.0
+modelscope==1.27.0
+munch==4.0.0
+numba==0.63.0
+numpy==2.2.6
+omegaconf==2.4.0
+openai-whisper==20250625
+opencv-python==4.9.0.80
+pandas==2.3.2
+requests==2.34.2
+safetensors==0.5.2
+sentencepiece==0.2.2
+soundfile==0.14.0
+tensorboard==2.20.0
+textstat==0.7.13
+tokenizers==0.21.0
+tqdm==4.70.1
+transformers==4.52.1
+unidic-lite==1.0.8
+wetext==0.1.8

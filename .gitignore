@@ -1,6 +1,7 @@
 # 依赖与产物
 node_modules/
 .cache/
+cache/
 out/
 *.log
 
@@ -10,15 +11,18 @@ config.json
 *.key
 .env
 
-# 模型与参考音：体积大、且涉及他人声音权益，绝不入库
+# 模型：体积大，且各有自己的许可，绝不入库
 models/
 index-tts/
 .venv/
 venv*/
-refs/*.wav
-refs/*.mp3
+
+# 参考音：可能涉及他人声音权益，整个目录都忽略（含子目录与其它格式）
+refs/
 
 # 本机的部署笔记（含本地路径与运维细节），不进公开仓库
 说明.md
+
+# Python 字节码
 __pycache__/
 *.pyc

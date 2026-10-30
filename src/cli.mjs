@@ -55,6 +55,8 @@ function loadConfig() {
     onebotToken: token,
     target: Number(cfg?.target?.userId || 0),
     ttsUrl: String(cfg?.tts?.url || 'http://127.0.0.1:7880').replace(/\/+$/, ''),
+    ref: cfg?.tts?.ref || '',
+    ttsToken: process.env.TTS_TOKEN || cfg?.tts?.token || '',
     ffmpeg: cfg?.ffmpeg?.path || 'ffmpeg',
   };
 }
@@ -63,6 +65,7 @@ const CFG = loadConfig();
 const TEXT = arg('text');
 const FILE = arg('file');
 const OUT = arg('out');
+const REF = arg('ref') || CFG.ref;
 const SEND = arg('send') === 'true';
 
 if (!TEXT && !FILE) {
@@ -100,7 +103,6 @@ async function sendVoice(file) {
 }
 
 const stamp = Date.now();
-const wav = OUT || path.join(CACHE, `cli_${stamp}.wav`);
 const mp3 = path.join(CACHE, `cli_${stamp}.mp3`);
 
 if (FILE) {
@@ -108,16 +110,26 @@ if (FILE) {
   console.log('[cli] 直接使用', FILE);
   toMp3(FILE, mp3);
 } else {
+  // 不传 output：让服务端写它自己的 out/，我们只读返回的 path。
+  const body = { text: TEXT };
+  if (REF) body.ref = REF;
+  const headers = { 'Content-Type': 'application/json' };
+  if (CFG.ttsToken) headers.Authorization = `Bearer ${CFG.ttsToken}`;
   const r = await fetch(CFG.ttsUrl + '/tts', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: TEXT, output: wav }),
+    headers,
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(900_000),
   });
   if (!r.ok) throw new Error(`TTS ${r.status}: ${(await r.text()).slice(0, 180)}`);
   const j = await r.json();
   if (!j.ok) throw new Error('TTS 失败: ' + j.error);
   console.log(`[cli] 合成 ${j.seconds}s（耗时 ${j.elapsed}s${j.cold ? '，冷启动' : ''}）→ ${j.path}`);
+  if (OUT) {
+    fs.mkdirSync(path.dirname(OUT), { recursive: true });
+    fs.copyFileSync(j.path, OUT);
+    console.log('[cli] wav 已另存到', OUT);
+  }
   toMp3(j.path, mp3);
 }
 

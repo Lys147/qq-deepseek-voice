@@ -39,7 +39,21 @@ _idle_sec = 15 * 60
 _stopping = False
 _lock = threading.Lock()          # 单卡串行：加载 / 推理 / 释放互斥
 
+_token = ''                       # 设置后所有 POST 都要 Bearer；用于非本机部署
+MAX_TEXT_CHARS = 600              # 与上游模型建议的输入上限一致
+MAX_BODY_BYTES = 256 * 1024       # 正常请求只有几百字节，给足余量即可
+
 PATH = {}
+
+
+def _inside(path, root):
+    """path 是否落在 root 内（解析符号链接后比较，防 ../ 与链接逃逸）。"""
+    try:
+        p = os.path.realpath(os.path.abspath(path))
+        r = os.path.realpath(os.path.abspath(root))
+        return os.path.commonpath([p, r]) == r
+    except Exception:
+        return False
 
 
 def _free(msg=''):
@@ -74,6 +88,10 @@ def _idle_watch():
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
+    def _authed(self):
+        h = self.headers.get('Authorization') or ''
+        return h == 'Bearer ' + _token
+
     def _json(self, code, obj):
         body = json.dumps(obj, ensure_ascii=False).encode('utf-8')
         self.send_response(code)
@@ -90,6 +108,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         global _last_use
+        # 先把请求体读完再判断：HTTP/1.1 长连接下，未读的 body 会被当成下一个请求，
+        # 导致后续请求收到莫名其妙的 501（本机实测踩到过）。
+        try:
+            n = int(self.headers.get('Content-Length') or 0)
+        except Exception:
+            n = 0
+        if n > MAX_BODY_BYTES:
+            self.close_connection = True
+            self._json(413, {'ok': False, 'error': 'request too large'})
+            return
+        raw = self.rfile.read(n) if n > 0 else b''
+
+        if _token and not self._authed():
+            self._json(401, {'ok': False, 'error': 'unauthorized'})
+            return
         if self.path == '/unload':
             with _lock:
                 _free('(manual)')
@@ -99,8 +132,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(404, {'ok': False, 'error': 'not found'})
             return
         try:
-            n = int(self.headers.get('Content-Length') or 0)
-            body = json.loads(self.rfile.read(n) or b'{}')
+            body = json.loads(raw or b'{}')
         except Exception as e:
             self._json(400, {'ok': False, 'error': 'bad json: %s' % e})
             return
@@ -109,11 +141,18 @@ class Handler(BaseHTTPRequestHandler):
         if not text:
             self._json(400, {'ok': False, 'error': 'empty text'})
             return
+        if len(text) > MAX_TEXT_CHARS:
+            self._json(400, {'ok': False, 'error': 'text too long (max %d chars)' % MAX_TEXT_CHARS})
+            return
         ref = str(body.get('ref') or PATH['ref'])
         out = str(body.get('output') or os.path.join(PATH['out'], 'tts_%d.wav' % int(time.time() * 1000)))
         lang = str(body.get('lang') or 'ZH')
         if not os.path.exists(ref):
             self._json(400, {'ok': False, 'error': 'ref not found: %s' % ref})
+            return
+        # 只允许写到输出目录内：接口不接受任意路径，避免覆盖服务账户有权限的任何文件
+        if not _inside(out, PATH['out']):
+            self._json(400, {'ok': False, 'error': 'output must be inside %s' % PATH['out']})
             return
 
         t0 = time.time()
@@ -153,7 +192,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global _bf16, _idle_sec
+    global _bf16, _idle_sec, _token
     ap = argparse.ArgumentParser()
     ap.add_argument('--host', default='127.0.0.1')
     ap.add_argument('--port', type=int, default=7880)
@@ -162,6 +201,8 @@ def main():
     ap.add_argument('--preload', action='store_true')
     ap.add_argument('--tts-dir', default=os.environ.get('TTS_DIR', os.getcwd()))
     ap.add_argument('--ref', default='')
+    ap.add_argument('--token', default=os.environ.get('TTS_TOKEN', ''),
+                    help='设置后所有 POST 需 Authorization: Bearer <token>。暴露到非本机时务必设置')
     args = ap.parse_args()
 
     root = os.path.abspath(args.tts_dir)
@@ -180,13 +221,20 @@ def main():
 
     _bf16 = not args.no_bf16
     _idle_sec = max(0.0, args.idle_min * 60.0)
+    _token = args.token or ''
+
+    loopback = args.host in ('127.0.0.1', 'localhost', '::1')
+    if not loopback and not _token:
+        print('[tts] !!! 绑定在 %s 且未设 --token：任何能访问该端口的人都可以让这台机器合成音频。' % args.host, flush=True)
+        print('[tts] !!! 对外提供时请加 --token，或用防火墙限制来源。', flush=True)
 
     if args.preload:
         _load()
     threading.Thread(target=_idle_watch, daemon=True).start()
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
-    print('[tts] listening http://%s:%d idle=%gmin bf16=%s' % (args.host, args.port, args.idle_min, _bf16), flush=True)
+    print('[tts] listening http://%s:%d idle=%gmin bf16=%s auth=%s'
+          % (args.host, args.port, args.idle_min, _bf16, 'on' if _token else 'off'), flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

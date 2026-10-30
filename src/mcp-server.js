@@ -65,6 +65,8 @@ function loadConfig() {
     ttsPython: cfg?.tts?.python || '',
     ttsPort: Number(cfg?.tts?.port || 7880),
     idleMinutes: Number(cfg?.tts?.idleMinutes ?? 15),
+    ref: cfg?.tts?.ref || '',
+    ttsToken: process.env.TTS_TOKEN || cfg?.tts?.token || '',
     ffmpeg: cfg?.ffmpeg?.path || 'ffmpeg',
   };
 }
@@ -85,36 +87,64 @@ async function health(timeoutMs = 2500) {
   }
 }
 
-async function ensureService() {
-  if (await health()) return;
+/** 单飞：并发调用只会拉起一个服务，其余等同一个 Promise。 */
+let starting = null;
+
+async function startOnce() {
   if (!CFG.ttsPython) throw new Error('TTS 服务未运行，且 config 里没有 tts.python，无法自动拉起');
   log('TTS 服务未运行，尝试拉起…');
-  const child = spawn(
-    CFG.ttsPython,
-    [path.join(ROOT, 'server', 'tts_server.py'), '--port', String(CFG.ttsPort), '--idle-min', String(CFG.idleMinutes)],
-    {
-      cwd: CFG.ttsDir,
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
-    },
-  );
+  const args = [
+    path.join(ROOT, 'server', 'tts_server.py'),
+    '--port', String(CFG.ttsPort),
+    '--idle-min', String(CFG.idleMinutes),
+    '--tts-dir', CFG.ttsDir,
+  ];
+  if (CFG.ref) args.push('--ref', CFG.ref);
+  if (CFG.ttsToken) args.push('--token', CFG.ttsToken);
+
+  const child = spawn(CFG.ttsPython, args, {
+    cwd: CFG.ttsDir,
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+  });
+
+  // spawn 失败（路径写错、权限不足）不会抛，只会触发 error 事件；
+  // 不监听的话整个 MCP 进会被未处理异常带走。
+  let spawnErr = null;
+  child.on('error', (e) => { spawnErr = e; log('拉起失败：' + (e?.message ?? e)); });
   child.unref();
+
   const deadline = Date.now() + 300_000;
   while (Date.now() < deadline) {
+    if (spawnErr) throw new Error(`无法启动 TTS 服务：${spawnErr.message}（检查 config.tts.python）`);
     await new Promise((r) => setTimeout(r, 2000));
     if (await health()) { log('TTS 服务已就绪'); return; }
   }
   throw new Error('TTS 服务启动超时（300s），请手动运行 server/tts_server.py 看报错');
 }
 
+async function ensureService() {
+  if (await health()) return;
+  if (!starting) {
+    starting = startOnce().finally(() => { starting = null; });
+  }
+  await starting;
+}
+
 // ---------------- 合成 / 转码 / 发送 ----------------
-async function synth(text, outWav) {
+// 不传 output：让服务端自己决定落盘位置（它只允许写自己的 out/），
+// 调用方读返回的 path。这样部署目录和仓库目录不同时也不会打架。
+async function synth(text) {
+  const body = { text };
+  if (CFG.ref) body.ref = CFG.ref;
+  const headers = { 'Content-Type': 'application/json' };
+  if (CFG.ttsToken) headers.Authorization = `Bearer ${CFG.ttsToken}`;
   const r = await fetch(CFG.ttsUrl + '/tts', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, output: outWav }),
+    headers,
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(900_000),
   });
   if (!r.ok) throw new Error(`TTS 服务 ${r.status}: ${(await r.text()).slice(0, 180)}`);
@@ -162,9 +192,8 @@ async function sayVoice(text) {
   await ensureService();
 
   const stamp = Date.now();
-  const wav = path.join(CACHE, `say_${stamp}.wav`);
   const mp3 = path.join(CACHE, `say_${stamp}.mp3`);
-  const j = await synth(t, wav);
+  const j = await synth(t);
   toMp3(j.path, mp3);
   const res = await sendVoice(mp3, CFG.target);
   return {
