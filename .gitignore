@@ -1,0 +1,24 @@
+# 依赖与产物
+node_modules/
+.cache/
+out/
+*.log
+
+# 本地配置与凭据（必须忽略）
+config.json
+*.token
+*.key
+.env
+
+# 模型与参考音：体积大、且涉及他人声音权益，绝不入库
+models/
+index-tts/
+.venv/
+venv*/
+refs/*.wav
+refs/*.mp3
+
+# 本机的部署笔记（含本地路径与运维细节），不进公开仓库
+说明.md
+__pycache__/
+*.pyc

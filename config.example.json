@@ -1,0 +1,31 @@
+{
+  "_comment": "复制成 config.json 再改。不要把真实的 config.json 提交到仓库。",
+
+  "onebot": {
+    "_comment": "OneBot v11 网关的 HTTP API。token 可以直接填，也可以指向网关自己的配置文件由程序读取。",
+    "httpUrl": "http://127.0.0.1:3000",
+    "accessToken": "",
+    "tokenConfigPath": "",
+    "_tokenConfigPath_hint": "例：C:/SnowLuma/config/onebot_1234567890.json —— 程序会读 networks.httpServers[0].accessToken"
+  },
+
+  "target": {
+    "_comment": "语音发给谁（QQ 号）。发群需要改成 groupId 并自行改发送接口。",
+    "userId": 1000000000
+  },
+
+  "tts": {
+    "_comment": "本地 IndexTTS 服务。dir 是本仓/部署根目录，python 是 venv 里的解释器。",
+    "url": "http://127.0.0.1:7880",
+    "dir": "D:/path/to/tts",
+    "python": "D:/path/to/tts/.venv/Scripts/python.exe",
+    "port": 7880,
+    "idleMinutes": 15,
+    "ref": "D:/path/to/tts/refs/ref.wav"
+  },
+
+  "ffmpeg": {
+    "_comment": "ffmpeg 可执行文件。留空则用 PATH 上的 ffmpeg。",
+    "path": ""
+  }
+}

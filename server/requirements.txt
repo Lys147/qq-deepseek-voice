@@ -1,0 +1,12 @@
+# IndexTTS 运行依赖（Python 3.10–3.11）
+# torch / torchaudio 不在这里装 —— 它们要按显卡选对的 CUDA 版本，见 README：
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+#
+# 然后：
+#   pip install -e <path>/index-tts --no-deps   # 它会把 torch 钉死，跳过依赖
+#   pip install -r requirements.txt
+
+soundfile>=0.12
+numpy
+wetext
+huggingface_hub

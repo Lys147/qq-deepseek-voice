@@ -1,0 +1,29 @@
+{
+  "name": "qq-deepseek-voice",
+  "version": "1.0.0",
+  "description": "给 AI 伙伴一副嗓子：本地 IndexTTS 音色克隆 + OneBot/QQ 语音条",
+  "type": "module",
+  "license": "MIT",
+  "private": false,
+  "bin": {
+    "qq-deepseek-voice": "src/cli.mjs",
+    "qq-deepseek-voice-mcp": "src/mcp-server.js"
+  },
+  "scripts": {
+    "mcp": "node src/mcp-server.js",
+    "say": "node src/cli.mjs",
+    "tts": "python server/tts_server.py --port 7880 --idle-min 15"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "qq",
+    "onebot",
+    "tts",
+    "voice-clone",
+    "indextts",
+    "mcp",
+    "deepseek-harness"
+  ]
+}
