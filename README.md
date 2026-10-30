@@ -61,14 +61,25 @@ pip install -e index-tts --no-deps      # 它会把 torch 钉在 2.8，跳过
 # 权重（约 5.2 GB）放 models/IndexTTS-2.5/
 ```
 
-需要的文件清单见 [docs/pitfalls.md](docs/pitfalls.md#模型下载)，**下完必须逐个核对大小**。
+需要的文件清单见 [docs/pitfalls.md](docs/pitfalls.md) 第 6 条，**下完必须逐个核对大小**。
 
 ### 3. 配好
 
 ```bash
 cp config.example.json config.json
-# 填：网关地址、OneBot token 或 token 所在配置路径、收件人 QQ、TTS 路径
 ```
+
+| 字段 | 说明 |
+|---|---|
+| `onebot.httpUrl` | 网关的 OneBot HTTP API，如 `http://127.0.0.1:3000` |
+| `onebot.accessToken` | 网关的 access token；或留空并用下面一项 |
+| `onebot.tokenConfigPath` | 直接指向网关配置文件，程序会读 `networks.httpServers[0].accessToken`（**推荐**，token 不进仓库） |
+| `target.userId` | 语音发给谁（QQ 号） |
+| `tts.url` | 合成服务地址，默认 `http://127.0.0.1:7880` |
+| `tts.dir` | 部署根目录（含 `index-tts/`、`models/`、`refs/`），默认本仓 |
+| `tts.python` | venv 里的解释器，用于**自动拉起**合成服务；留空则不会自动拉起 |
+| `tts.idleMinutes` | 闲置多少分钟释放模型，默认 15 |
+| `ffmpeg.path` | ffmpeg 可执行文件；留空用 PATH 上的 |
 
 ### 4. 跑
 
@@ -82,6 +93,9 @@ node src/cli.mjs --text "在。刚才在水底，没听见你叫我。" --send
 # 或让 Agent 用（MCP）
 node src/mcp-server.js
 ```
+
+> Windows 用户可以直接双击 `scripts/start-tts.cmd` / `scripts/stop-tts.cmd`；
+> macOS / Linux 请直接用上面的命令（那两处 `.cmd` 只用 PowerShell 做进程管理，核心代码本身跨平台）。
 
 ## 给 Agent 用（MCP）
 

@@ -27,9 +27,22 @@ function arg(name, def = '') {
 
 function loadConfig() {
   const p = process.env.QQVOICE_CONFIG || path.join(ROOT, 'config.json');
-  let text = fs.readFileSync(p, 'utf8');
+  let text;
+  try {
+    text = fs.readFileSync(p, 'utf8');
+  } catch {
+    console.error('[cli] 找不到配置文件：' + p);
+    console.error('      复制 config.example.json 为 config.json，或设 QQVOICE_CONFIG 指到别处。');
+    process.exit(1);
+  }
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-  const cfg = JSON.parse(text);
+  let cfg;
+  try {
+    cfg = JSON.parse(text);
+  } catch (e) {
+    console.error('[cli] config.json 不是合法 JSON：' + e.message);
+    process.exit(1);
+  }
   let token = cfg?.onebot?.accessToken || '';
   if (!token && cfg?.onebot?.tokenConfigPath) {
     try {
@@ -62,24 +75,28 @@ function toMp3(src, dst) {
   return dst;
 }
 
-function sendVoice(file) {
+async function sendVoice(file) {
   if (!CFG.onebotToken) throw new Error('没有 OneBot token');
-  const body = JSON.stringify({
+  const body = {
     user_id: CFG.target,
     message: [{ type: 'record', data: { file: 'file:///' + file.replace(/\\/g, '/') } }],
+  };
+  const r = await fetch(CFG.onebotUrl + '/send_private_msg', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${CFG.onebotToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(120_000),
   });
-  const ps = `
-$ErrorActionPreference='Stop'
-$h=@{Authorization="Bearer $env:OB_TOKEN"}
-$r=Invoke-RestMethod -Uri "$env:OB_URL/send_private_msg" -Method Post -ContentType 'application/json' -Headers $h -Body $env:OB_BODY -TimeoutSec 90
-$r | ConvertTo-Json -Depth 6 -Compress
-`;
-  const out = execFileSync('powershell', ['-NoProfile', '-Command', ps], {
-    env: { ...process.env, OB_TOKEN: CFG.onebotToken, OB_URL: CFG.onebotUrl, OB_BODY: body },
-    encoding: 'utf8',
-    timeout: 120_000,
-  });
-  return JSON.parse(out.trim());
+  const text = await r.text();
+  let j;
+  try { j = JSON.parse(text); } catch { throw new Error(`网关返回非 JSON（HTTP ${r.status}）：${text.slice(0, 160)}`); }
+  if (!r.ok || j?.status === 'failed') {
+    throw new Error(`发送失败：HTTP ${r.status} ${j?.wording || j?.message || ''}`.trim());
+  }
+  return j;
 }
 
 const stamp = Date.now();
@@ -108,6 +125,6 @@ console.log('[cli] mp3', (fs.statSync(mp3).size / 1024).toFixed(0) + 'KB');
 if (!SEND) {
   console.log('[cli] 未加 --send，停在本地');
 } else {
-  const res = sendVoice(mp3);
+  const res = await sendVoice(mp3);
   console.log('[cli] 已发送', JSON.stringify(res));
 }
