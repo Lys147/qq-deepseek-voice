@@ -1,7 +1,7 @@
 {
   "name": "qq-deepseek-voice",
   "version": "1.0.0",
-  "description": "给 AI 伙伴一副嗓子：本地 IndexTTS 音色克隆 + OneBot/QQ 语音条",
+  "description": "让她讲出心声：本地 IndexTTS 音色克隆 + OneBot/QQ 语音条",
   "type": "module",
   "license": "MIT",
   "private": false,
